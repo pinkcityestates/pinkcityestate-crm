@@ -313,45 +313,285 @@ if st.session_state.logged_in and st.session_state.user_role == "admin":
         st.title("🏘️ Properties Management")
         st.markdown("---")
         
-        # CSV Bulk Upload
-        with st.expander("📤 Bulk Upload Properties (CSV)", expanded=False):
-            st.info("Upload CSV file with columns: type, location, area_sqft, price, bedrooms, furnished, status, owner_name, owner_contact, referral_name, referral_reward, remarks")
-            
-            uploaded_file = st.file_uploader("Choose CSV file", type="csv")
-            
-            if uploaded_file is not None:
-                try:
-                    df_upload = pd.read_csv(uploaded_file)
-                    st.write("Preview:")
-                    st.dataframe(df_upload.head())
-                    
-                    if st.button("📥 Import Properties", type="primary"):
-                        success_count = 0
-                        for idx, row in df_upload.iterrows():
-                            new_property = {
-                                "id": f"PROP{len(properties)+idx+1:03d}",
-                                "type": str(row.get('type', 'Flat')),
-                                "location": str(row.get('location', '')),
-                                "area_sqft": int(row.get('area_sqft', 0)) if pd.notna(row.get('area_sqft')) else 0,
-                                "price": int(row.get('price', 0)) if pd.notna(row.get('price')) else 0,
-                                "bedrooms": str(row.get('bedrooms', '2 BHK')),
-                                "furnished": str(row.get('furnished', 'No')),
-                                "status": str(row.get('status', 'Available')),
-                                "owner_name": str(row.get('owner_name', '')),
-                                "owner_contact": str(row.get('owner_contact', '')),
-                                "referral_name": str(row.get('referral_name', '')),
-                                "referral_reward": int(row.get('referral_reward', 0)) if pd.notna(row.get('referral_reward')) else 0,
-                                "remarks": str(row.get('remarks', '')),
-                                "date_added": datetime.now().strftime("%Y-%m-%d")
-                            }
-                            properties.append(new_property)
-                            success_count += 1
+        # BULK IMPORT SECTION
+        st.subheader("📥 Bulk Import Properties")
+        
+        import_type = st.radio("Import Type", ["📊 Excel/CSV File", "💬 WhatsApp Messages"], horizontal=True)
+        
+        if import_type == "📊 Excel/CSV File":
+            with st.expander("Upload Excel/CSV with Flexible Column Mapping", expanded=True):
+                st.info("Upload your Excel or CSV file. Map your column names to our fields in the preview.")
+                
+                uploaded_file = st.file_uploader("Choose Excel/CSV file", type=["csv", "xlsx", "xls"])
+                
+                if uploaded_file is not None:
+                    try:
+                        # Read file
+                        if uploaded_file.name.endswith('.csv'):
+                            df_upload = pd.read_csv(uploaded_file)
+                        else:
+                            df_upload = pd.read_excel(uploaded_file)
                         
-                        save_data(PROPERTIES_FILE, properties)
-                        st.success(f"✅ Successfully imported {success_count} properties!")
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Error reading CSV: {e}")
+                        st.write("**📋 Preview of your data:**")
+                        st.dataframe(df_upload.head(10), use_container_width=True)
+                        
+                        st.write("**🔧 Map your columns:**")
+                        st.caption("Select which column in your file matches each field")
+                        
+                        df_columns = ['(Not mapped)'] + list(df_upload.columns)
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            type_col = st.selectbox("Property Type", df_columns, key="map_type")
+                            location_col = st.selectbox("Location", df_columns, key="map_location")
+                            area_col = st.selectbox("Area (sqft)", df_columns, key="map_area")
+                            price_col = st.selectbox("Price", df_columns, key="map_price")
+                            
+                        with col2:
+                            bedrooms_col = st.selectbox("Bedrooms", df_columns, key="map_bedrooms")
+                            furnished_col = st.selectbox("Furnished", df_columns, key="map_furnished")
+                            status_col = st.selectbox("Status", df_columns, key="map_status")
+                            owner_name_col = st.selectbox("Owner Name", df_columns, key="map_owner")
+                            
+                        with col3:
+                            owner_contact_col = st.selectbox("Owner Contact", df_columns, key="map_contact")
+                            referral_col = st.selectbox("Referral Name", df_columns, key="map_referral")
+                            reward_col = st.selectbox("Referral Reward", df_columns, key="map_reward")
+                            remarks_col = st.selectbox("Remarks", df_columns, key="map_remarks")
+                        
+                        # Default values for unmapped fields
+                        st.write("**📝 Default values for missing columns:**")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            default_type = st.selectbox("Default Type", ["Flat", "Plot", "Villa", "Commercial", "Office"], key="def_type")
+                            default_status = st.selectbox("Default Status", ["Available", "Sold", "Rented", "Under Negotiation"], key="def_status")
+                        with col2:
+                            default_bedrooms = st.selectbox("Default BHK", ["Studio", "1 BHK", "2 BHK", "3 BHK", "4 BHK", "5+ BHK"], key="def_bhk")
+                            default_furnished = st.selectbox("Default Furnished", ["No", "Yes", "Semi"], key="def_furn")
+                        with col3:
+                            default_area = st.number_input("Default Area", value=1000, key="def_area")
+                            default_price = st.number_input("Default Price", value=5000000, key="def_price")
+                        
+                        # Preview mapped data
+                        if st.button("👁️ Preview Mapped Data", type="secondary"):
+                            preview_data = []
+                            for idx, row in df_upload.head(5).iterrows():
+                                mapped_row = {
+                                    "type": str(row.get(type_col, default_type)) if type_col != '(Not mapped)' else default_type,
+                                    "location": str(row.get(location_col, '')) if location_col != '(Not mapped)' else '',
+                                    "area_sqft": int(row.get(area_col, default_area)) if area_col != '(Not mapped)' and pd.notna(row.get(area_col)) else default_area,
+                                    "price": int(row.get(price_col, default_price)) if price_col != '(Not mapped)' and pd.notna(row.get(price_col)) else default_price,
+                                    "bedrooms": str(row.get(bedrooms_col, default_bedrooms)) if bedrooms_col != '(Not mapped)' else default_bedrooms,
+                                    "furnished": str(row.get(furnished_col, default_furnished)) if furnished_col != '(Not mapped)' else default_furnished,
+                                    "status": str(row.get(status_col, default_status)) if status_col != '(Not mapped)' else default_status,
+                                    "owner_name": str(row.get(owner_name_col, '')) if owner_name_col != '(Not mapped)' else '',
+                                    "owner_contact": str(row.get(owner_contact_col, '')) if owner_contact_col != '(Not mapped)' else '',
+                                    "referral_name": str(row.get(referral_col, '')) if referral_col != '(Not mapped)' else '',
+                                    "referral_reward": int(row.get(reward_col, 0)) if reward_col != '(Not mapped)' and pd.notna(row.get(reward_col)) else 0,
+                                    "remarks": str(row.get(remarks_col, '')) if remarks_col != '(Not mapped)' else ''
+                                }
+                                preview_data.append(mapped_row)
+                            
+                            st.write("**📋 Preview of mapped properties:**")
+                            st.dataframe(pd.DataFrame(preview_data), use_container_width=True)
+                        
+                        # Import button
+                        if st.button("📥 Import All Properties", type="primary"):
+                            success_count = 0
+                            for idx, row in df_upload.iterrows():
+                                try:
+                                    new_property = {
+                                        "id": f"PROP{len(properties)+idx+1:03d}",
+                                        "type": str(row.get(type_col, default_type)) if type_col != '(Not mapped)' else default_type,
+                                        "location": str(row.get(location_col, '')) if location_col != '(Not mapped)' else '',
+                                        "area_sqft": int(float(str(row.get(area_col, default_area)).replace(',', ''))) if area_col != '(Not mapped)' and pd.notna(row.get(area_col)) else default_area,
+                                        "price": int(float(str(row.get(price_col, default_price)).replace(',', ''))) if price_col != '(Not mapped)' and pd.notna(row.get(price_col)) else default_price,
+                                        "bedrooms": str(row.get(bedrooms_col, default_bedrooms)) if bedrooms_col != '(Not mapped)' else default_bedrooms,
+                                        "furnished": str(row.get(furnished_col, default_furnished)) if furnished_col != '(Not mapped)' else default_furnished,
+                                        "status": str(row.get(status_col, default_status)) if status_col != '(Not mapped)' else default_status,
+                                        "owner_name": str(row.get(owner_name_col, '')) if owner_name_col != '(Not mapped)' else '',
+                                        "owner_contact": str(row.get(owner_contact_col, '')) if owner_contact_col != '(Not mapped)' else '',
+                                        "referral_name": str(row.get(referral_col, '')) if referral_col != '(Not mapped)' else '',
+                                        "referral_reward": int(float(str(row.get(reward_col, 0)).replace(',', ''))) if reward_col != '(Not mapped)' and pd.notna(row.get(reward_col)) else 0,
+                                        "remarks": str(row.get(remarks_col, '')) if remarks_col != '(Not mapped)' else '',
+                                        "date_added": datetime.now().strftime("%Y-%m-%d"),
+                                        "import_source": "excel"
+                                    }
+                                    properties.append(new_property)
+                                    success_count += 1
+                                except Exception as e:
+                                    st.error(f"Error on row {idx+1}: {e}")
+                            
+                            save_data(PROPERTIES_FILE, properties)
+                            st.success(f"✅ Successfully imported {success_count} properties!")
+                            st.rerun()
+                            
+                    except Exception as e:
+                        st.error(f"❌ Error reading file: {e}")
+        
+        else:  # WhatsApp Messages Import
+            with st.expander("💬 Import from WhatsApp Messages", expanded=True):
+                st.info("Paste WhatsApp chat messages here. The system will extract property details.")
+                st.caption("Format: Each property should be separated by a blank line or new message")
+                
+                whatsapp_text = st.text_area("Paste WhatsApp messages", height=300, placeholder="""Example formats:
+
+Location: Malviya Nagar
+Type: 2 BHK Flat
+Area: 1200 sqft
+Price: 45 Lakhs
+Owner: Rajesh
+Contact: 9876543210
+
+OR
+
+Malviya Nagar, 2 BHK, 1200 sqft, 45 Lakhs, Contact: 9876543210""")
+                
+                if whatsapp_text:
+                    # Parse WhatsApp messages
+                    parsed_properties = []
+                    
+                    # Split by double newlines or single newlines
+                    messages = whatsapp_text.split('\n\n') if '\n\n' in whatsapp_text else whatsapp_text.split('\n')
+                    
+                    for msg in messages:
+                        if not msg.strip():
+                            continue
+                            
+                        prop_data = {
+                            "raw_text": msg.strip(),
+                            "type": "Flat",
+                            "location": "",
+                            "area_sqft": 0,
+                            "price": 0,
+                            "bedrooms": "2 BHK",
+                            "furnished": "No",
+                            "status": "Available",
+                            "owner_name": "",
+                            "owner_contact": "",
+                            "remarks": ""
+                        }
+                        
+                        # Extract data using patterns
+                        import re
+                        
+                        # Location patterns
+                        location_patterns = [
+                            r'(?:Location|Area|Locality|Place)[\s:]*([^\n,]+)',
+                            r'(?:in|at)\s+([A-Za-z\s]+(?:Nagar|Colony|Road|Street|Area|City))',
+                            r'(?:Malviya|Vaishali|Jagatpura|Tonk|Durgapura|C-Scheme|Bapu|Mansarovar|Shyam)[\s\w]*'
+                        ]
+                        for pattern in location_patterns:
+                            match = re.search(pattern, msg, re.IGNORECASE)
+                            if match:
+                                prop_data["location"] = match.group(1).strip() if match.groups() else match.group(0).strip()
+                                break
+                        
+                        # Property type patterns
+                        type_patterns = [
+                            r'(\d+)\s*BHK',
+                            r'(Flat|Plot|Villa|Commercial|Office|Shop|Apartment)',
+                            r'(Residential|Commercial)'
+                        ]
+                        for pattern in type_patterns:
+                            match = re.search(pattern, msg, re.IGNORECASE)
+                            if match:
+                                if 'BHK' in msg.upper():
+                                    prop_data["bedrooms"] = match.group(0).strip()
+                                prop_data["type"] = match.group(1).capitalize() if match.group(1).lower() in ['flat', 'plot', 'villa', 'commercial', 'office', 'shop'] else prop_data["type"]
+                                break
+                        
+                        # Area patterns
+                        area_match = re.search(r'(\d+)\s*(?:sq\s*ft|sqft|sf|sq\.\s*ft)', msg, re.IGNORECASE)
+                        if area_match:
+                            prop_data["area_sqft"] = int(area_match.group(1))
+                        
+                        # Price patterns (handle lakhs and crores)
+                        price_patterns = [
+                            r'(?:Price|Rs|₹)\s*[.:]*\s*(\d+(?:\.\d+)?)\s*(?:L|Lakh|Lakhs)',
+                            r'(\d+(?:\.\d+)?)\s*(?:L|Lakh|Lakhs)',
+                            r'(?:Price|Rs|₹)\s*[.:]*\s*(\d+(?:\.\d+)?)\s*(?:Cr|Crore|Crores)',
+                            r'(\d+(?:\.\d+)?)\s*(?:Cr|Crore|Crores)',
+                            r'(?:Price|Rs|₹)\s*[.:]*\s*(\d{7,})',
+                        ]
+                        for pattern in price_patterns:
+                            match = re.search(pattern, msg, re.IGNORECASE)
+                            if match:
+                                price_val = float(match.group(1))
+                                if 'cr' in msg.lower() or 'crore' in msg.lower():
+                                    prop_data["price"] = int(price_val * 10000000)
+                                else:
+                                    prop_data["price"] = int(price_val * 100000)
+                                break
+                        
+                        # Contact patterns
+                        contact_match = re.search(r'(\d{10})', msg)
+                        if contact_match:
+                            prop_data["owner_contact"] = contact_match.group(1)
+                        
+                        # Owner name patterns
+                        owner_match = re.search(r'(?:Owner|Contact Person|Name)[\s:]*([A-Za-z\s]+?)(?:\n|,|\d|$)', msg, re.IGNORECASE)
+                        if owner_match:
+                            prop_data["owner_name"] = owner_match.group(1).strip()
+                        
+                        parsed_properties.append(prop_data)
+                    
+                    if parsed_properties:
+                        st.write(f"**📋 Found {len(parsed_properties)} properties:**")
+                        
+                        # Editable preview
+                        edited_properties = []
+                        for idx, prop in enumerate(parsed_properties):
+                            with st.expander(f"Property {idx+1}: {prop['location'] or 'Unknown Location'} - {prop['bedrooms']}", expanded=(idx==0)):
+                                st.text(f"Original: {prop['raw_text'][:100]}...")
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    prop['type'] = st.selectbox(f"Type {idx}", ["Flat", "Plot", "Villa", "Commercial", "Office"], 
+                                                               index=["Flat", "Plot", "Villa", "Commercial", "Office"].index(prop['type']) if prop['type'] in ["Flat", "Plot", "Villa", "Commercial", "Office"] else 0)
+                                    prop['location'] = st.text_input(f"Location {idx}", value=prop['location'])
+                                    prop['area_sqft'] = st.number_input(f"Area (sqft) {idx}", value=prop['area_sqft'])
+                                    prop['price'] = st.number_input(f"Price (₹) {idx}", value=prop['price'])
+                                    prop['bedrooms'] = st.selectbox(f"BHK {idx}", ["Studio", "1 BHK", "2 BHK", "3 BHK", "4 BHK", "5+ BHK"],
+                                                                   index=["Studio", "1 BHK", "2 BHK", "3 BHK", "4 BHK", "5+ BHK"].index(prop['bedrooms']) if prop['bedrooms'] in ["Studio", "1 BHK", "2 BHK", "3 BHK", "4 BHK", "5+ BHK"] else 2)
+                                with col2:
+                                    prop['furnished'] = st.selectbox(f"Furnished {idx}", ["No", "Yes", "Semi"],
+                                                                   index=["No", "Yes", "Semi"].index(prop['furnished']) if prop['furnished'] in ["No", "Yes", "Semi"] else 0)
+                                    prop['status'] = st.selectbox(f"Status {idx}", ["Available", "Sold", "Rented", "Under Negotiation"])
+                                    prop['owner_name'] = st.text_input(f"Owner Name {idx}", value=prop['owner_name'])
+                                    prop['owner_contact'] = st.text_input(f"Owner Contact {idx}", value=prop['owner_contact'])
+                                    prop['remarks'] = st.text_area(f"Remarks {idx}", value=prop['remarks'])
+                                
+                                edited_properties.append(prop)
+                        
+                        if st.button("📥 Import All Parsed Properties", type="primary"):
+                            success_count = 0
+                            for idx, prop in enumerate(edited_properties):
+                                new_property = {
+                                    "id": f"PROP{len(properties)+idx+1:03d}",
+                                    "type": prop['type'],
+                                    "location": prop['location'],
+                                    "area_sqft": prop['area_sqft'],
+                                    "price": prop['price'],
+                                    "bedrooms": prop['bedrooms'],
+                                    "furnished": prop['furnished'],
+                                    "status": prop['status'],
+                                    "owner_name": prop['owner_name'],
+                                    "owner_contact": prop['owner_contact'],
+                                    "referral_name": "",
+                                    "referral_reward": 0,
+                                    "remarks": prop['remarks'],
+                                    "date_added": datetime.now().strftime("%Y-%m-%d"),
+                                    "import_source": "whatsapp"
+                                }
+                                properties.append(new_property)
+                                success_count += 1
+                            
+                            save_data(PROPERTIES_FILE, properties)
+                            st.success(f"✅ Successfully imported {success_count} properties from WhatsApp!")
+                            st.rerun()
+                    else:
+                        st.warning("No properties could be parsed from the text. Please check the format.")
         
         st.markdown("---")
         
