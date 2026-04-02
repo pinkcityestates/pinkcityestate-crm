@@ -3,7 +3,7 @@ PinkCityEstate.in - Real Estate CRM
 ====================================
 Streamlit web application for property management
 Features: Properties, Buyers, Sellers, Referrals, Reports, Search & Match
-With Admin/User login system, Password change, CSV bulk upload
+With Admin/User login system, Password change, CSV bulk upload, Public Inquiry
 """
 
 import streamlit as st
@@ -45,13 +45,14 @@ if 'user_role' not in st.session_state:
     st.session_state.user_role = None
 if 'username' not in st.session_state:
     st.session_state.username = None
+if 'public_page' not in st.session_state:
+    st.session_state.public_page = "🔍 Search Properties"
 
 # Load or initialize credentials
 def load_credentials():
     if os.path.exists(CREDENTIALS_FILE):
         with open(CREDENTIALS_FILE, 'r') as f:
             return json.load(f)
-    # Default credentials if file doesn't exist
     return {
         "admin": hash_password("admin123"),
         "user": hash_password("user123")
@@ -101,68 +102,166 @@ def to_excel(df, sheet_name="Sheet1"):
     output.seek(0)
     return output
 
-# ============== LOGIN PAGE ==============
-if not st.session_state.logged_in:
-    st.title("🏠 PinkCityEstate.in CRM Portal")
+# ============== SIDEBAR NAVIGATION ==============
+st.sidebar.title("🏠 PinkCityEstate.in")
+
+# Show login status in sidebar
+if st.session_state.logged_in:
+    st.sidebar.markdown(f"**Welcome, {st.session_state.username}** ({st.session_state.user_role})")
+    st.sidebar.markdown("---")
+    
+    # Logout button
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state.logged_in = False
+        st.session_state.user_role = None
+        st.session_state.username = None
+        st.rerun()
+    st.sidebar.markdown("---")
+    
+    # Admin Navigation
+    if st.session_state.user_role == "admin":
+        page = st.sidebar.radio(
+            "Navigation",
+            ["📋 Dashboard", "🏘️ Properties", "👤 Buyers", "🏢 Sellers", "🎁 Referrals", "📊 Reports", "🔍 Search & Match", "📞 Inquiries", "⚙️ Settings"]
+        )
+    else:
+        # User Navigation (logged in but not admin)
+        page = st.sidebar.radio(
+            "Navigation",
+            ["📝 Submit Property", "📝 Submit Requirement", "🔍 Search Properties", "📞 Contact Us"]
+        )
+else:
+    # Not logged in - show public pages + Admin Login option
+    st.sidebar.markdown("**Welcome, Guest**")
+    st.sidebar.markdown("---")
+    page = st.sidebar.radio(
+        "Navigation",
+        ["🔍 Search Properties", "📞 Contact Us", "🔐 Admin Login"]
+    )
+
+# ============== PUBLIC PAGES (No Login Required) ==============
+
+# ----- PUBLIC SEARCH PROPERTIES -----
+if page == "🔍 Search Properties":
+    st.title("🔍 Search Available Properties")
+    st.markdown("---")
+    st.info("Search for available properties matching your requirements.")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        prop_type = st.selectbox("Property Type", ["All", "Flat", "Plot", "Villa", "Commercial"])
+    with col2:
+        min_price = st.number_input("Min Price (₹)", value=0)
+    with col3:
+        max_price = st.number_input("Max Price (₹)", value=50000000)
+    
+    location = st.text_input("Location (optional)")
+    
+    if st.button("🔍 Search", type="primary"):
+        if properties:
+            available_props = [p for p in properties if p.get('status') == 'Available']
+            results = available_props
+            
+            if prop_type != "All":
+                results = [p for p in results if p.get('type') == prop_type]
+            
+            results = [p for p in results if min_price <= p.get('price', 0) <= max_price]
+            
+            if location:
+                results = [p for p in results if location.lower() in p.get('location', '').lower()]
+            
+            if results:
+                st.success(f"Found {len(results)} properties")
+                display_props = [{k: v for k, v in p.items() if k not in ['owner_contact']} for p in results]
+                st.dataframe(pd.DataFrame(display_props), use_container_width=True)
+            else:
+                st.warning("No properties found matching your criteria.")
+                st.info("📞 Please send us your inquiry through the Contact Us page. Our team will get back to you within 24 hours.")
+        else:
+            st.info("No properties available at the moment.")
+            st.info("📞 Please send us your inquiry through the Contact Us page. Our team will get back to you within 24 hours.")
+
+# ----- PUBLIC CONTACT US -----
+elif page == "📞 Contact Us":
+    st.title("📞 Contact Us / Send Inquiry")
     st.markdown("---")
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    st.info("Have a question or need assistance? Fill out the form below and our team will get back to you within 24 hours.")
     
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        inquiry_name = st.text_input("Your Name")
+        inquiry_contact = st.text_input("Contact Number")
+        inquiry_email = st.text_input("Email Address")
+        
     with col2:
-        st.subheader("🔐 Login")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        
-        if st.button("Login", type="primary", use_container_width=True):
-            hashed_input = hash_password(password)
-            
-            if username == "admin" and verify_credentials("admin", password):
-                st.session_state.logged_in = True
-                st.session_state.user_role = "admin"
-                st.session_state.username = username
-                st.success("✅ Admin login successful!")
-                st.rerun()
-            elif username == "user" and verify_credentials("user", password):
-                st.session_state.logged_in = True
-                st.session_state.user_role = "user"
-                st.session_state.username = username
-                st.success("✅ User login successful!")
-                st.rerun()
-            else:
-                st.error("❌ Invalid username or password")
-        
-        st.info("**Demo Credentials:**\n- Admin: admin / admin123\n- User: user / user123")
+        inquiry_type = st.selectbox("Inquiry Type", ["General", "Property", "Buy", "Sell", "Other"])
+        preferred_contact = st.selectbox("Preferred Contact Method", ["Phone", "Email", "WhatsApp"])
     
-    st.stop()
+    inquiry_message = st.text_area("Your Message / Inquiry", height=150)
+    
+    if st.button("📤 Send Inquiry", type="primary"):
+        if not inquiry_name or not inquiry_contact or not inquiry_message:
+            st.error("❌ Please fill in Name, Contact Number, and Message")
+        else:
+            new_inquiry = {
+                "id": f"INQ{len(inquiries)+1:03d}",
+                "name": inquiry_name,
+                "contact": inquiry_contact,
+                "email": inquiry_email,
+                "inquiry_type": inquiry_type,
+                "preferred_contact": preferred_contact,
+                "message": inquiry_message,
+                "status": "New",
+                "admin_remarks": "",
+                "date_added": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "updated_date": ""
+            }
+            inquiries.append(new_inquiry)
+            save_data(INQUIRIES_FILE, inquiries)
+            st.success("✅ Your inquiry has been submitted successfully! Our team will contact you within 24 hours.")
+            st.balloons()
 
-# ============== MAIN APPLICATION ==============
-st.sidebar.title("🏠 PinkCityEstate.in")
-st.sidebar.markdown(f"**Welcome, {st.session_state.username}** ({st.session_state.user_role})")
-st.sidebar.markdown("---")
+# ----- ADMIN LOGIN -----
+elif page == "🔐 Admin Login":
+    if not st.session_state.logged_in:
+        st.title("🔐 Admin Login")
+        st.markdown("---")
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        
+        with col2:
+            st.subheader("🔐 Login")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            
+            if st.button("Login", type="primary", use_container_width=True):
+                if username == "admin" and verify_credentials("admin", password):
+                    st.session_state.logged_in = True
+                    st.session_state.user_role = "admin"
+                    st.session_state.username = username
+                    st.success("✅ Admin login successful!")
+                    st.rerun()
+                elif username == "user" and verify_credentials("user", password):
+                    st.session_state.logged_in = True
+                    st.session_state.user_role = "user"
+                    st.session_state.username = username
+                    st.success("✅ User login successful!")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid username or password")
+            
+            st.info("**Demo Credentials:**\n- Admin: admin / admin123\n- User: user / user123")
+    else:
+        st.title("✅ Already Logged In")
+        st.markdown("---")
+        st.success(f"You are already logged in as **{st.session_state.username}** ({st.session_state.user_role})")
+        if st.button("Go to Dashboard"):
+            st.rerun()
 
-# Logout button
-if st.sidebar.button("🚪 Logout"):
-    st.session_state.logged_in = False
-    st.session_state.user_role = None
-    st.session_state.username = None
-    st.rerun()
-
-st.sidebar.markdown("---")
-
-# Navigation based on role
-if st.session_state.user_role == "admin":
-    page = st.sidebar.radio(
-        "Navigation",
-        ["📋 Dashboard", "🏘️ Properties", "👤 Buyers", "🏢 Sellers", "🎁 Referrals", "📊 Reports", "🔍 Search & Match", "📞 Inquiries", "⚙️ Settings"]
-    )
-else:
-    page = st.sidebar.radio(
-        "Navigation",
-        ["📝 Submit Property", "📝 Submit Requirement", "🔍 Search Properties", "📞 Contact Us", "⚙️ Settings"]
-    )
-
-# ============== ADMIN PAGES ==============
-if st.session_state.user_role == "admin":
+# ============== ADMIN PAGES (Login Required) ==============
+if st.session_state.logged_in and st.session_state.user_role == "admin":
     
     # ----- DASHBOARD -----
     if page == "📋 Dashboard":
@@ -214,7 +313,7 @@ if st.session_state.user_role == "admin":
         st.title("🏘️ Properties Management")
         st.markdown("---")
         
-        # CSV Bulk Upload (Admin Only)
+        # CSV Bulk Upload
         with st.expander("📤 Bulk Upload Properties (CSV)", expanded=False):
             st.info("Upload CSV file with columns: type, location, area_sqft, price, bedrooms, furnished, status, owner_name, owner_contact, referral_name, referral_reward, remarks")
             
@@ -256,6 +355,7 @@ if st.session_state.user_role == "admin":
         
         st.markdown("---")
         
+        # Add New Property
         with st.expander("➕ Add New Property", expanded=False):
             col1, col2 = st.columns(2)
             
@@ -301,6 +401,7 @@ if st.session_state.user_role == "admin":
         
         st.markdown("---")
         
+        # All Properties with Delete
         st.subheader("📋 All Properties")
         if properties:
             df = pd.DataFrame(properties)
@@ -323,20 +424,19 @@ if st.session_state.user_role == "admin":
             
             st.dataframe(filtered_df, use_container_width=True)
             
-            # Delete Property Section
+            # Delete Property
             st.markdown("---")
             st.subheader("🗑️ Delete Property")
             st.warning("⚠️ This action cannot be undone!")
             
             prop_to_delete = st.selectbox(
                 "Select Property to Delete", 
-                [f"{p.get('id')} - {p.get('location', 'Unknown')} ({p.get('type', 'N/A')})" for p in properties],
-                key="delete_prop"
+                [f"{p.get('id')} - {p.get('location', 'Unknown')} ({p.get('type', 'N/A')})" for p in properties]
             )
             
             col1, col2 = st.columns(2)
             with col1:
-                confirm_delete = st.checkbox("I confirm I want to delete this property", key="confirm_prop_delete")
+                confirm_delete = st.checkbox("I confirm I want to delete this property")
             with col2:
                 if st.button("🗑️ Delete Property", type="secondary"):
                     if confirm_delete:
@@ -416,20 +516,19 @@ if st.session_state.user_role == "admin":
             
             st.dataframe(filtered_df, use_container_width=True)
             
-            # Delete Buyer Section
+            # Delete Buyer
             st.markdown("---")
             st.subheader("🗑️ Delete Buyer")
             st.warning("⚠️ This action cannot be undone!")
             
             buyer_to_delete = st.selectbox(
                 "Select Buyer to Delete", 
-                [f"{b.get('id')} - {b.get('name', 'Unknown')} ({b.get('contact', 'N/A')})" for b in buyers],
-                key="delete_buyer"
+                [f"{b.get('id')} - {b.get('name', 'Unknown')} ({b.get('contact', 'N/A')})" for b in buyers]
             )
             
             col1, col2 = st.columns(2)
             with col1:
-                confirm_delete = st.checkbox("I confirm I want to delete this buyer", key="confirm_buyer_delete")
+                confirm_delete = st.checkbox("I confirm I want to delete this buyer")
             with col2:
                 if st.button("🗑️ Delete Buyer", type="secondary"):
                     if confirm_delete:
@@ -492,20 +591,19 @@ if st.session_state.user_role == "admin":
             df = pd.DataFrame(sellers)
             st.dataframe(df, use_container_width=True)
             
-            # Delete Seller Section
+            # Delete Seller
             st.markdown("---")
             st.subheader("🗑️ Delete Seller")
             st.warning("⚠️ This action cannot be undone!")
             
             seller_to_delete = st.selectbox(
                 "Select Seller to Delete", 
-                [f"{s.get('id')} - {s.get('name', 'Unknown')} ({s.get('contact', 'N/A')})" for s in sellers],
-                key="delete_seller"
+                [f"{s.get('id')} - {s.get('name', 'Unknown')} ({s.get('contact', 'N/A')})" for s in sellers]
             )
             
             col1, col2 = st.columns(2)
             with col1:
-                confirm_delete = st.checkbox("I confirm I want to delete this seller", key="confirm_seller_delete")
+                confirm_delete = st.checkbox("I confirm I want to delete this seller")
             with col2:
                 if st.button("🗑️ Delete Seller", type="secondary"):
                     if confirm_delete:
@@ -788,20 +886,19 @@ if st.session_state.user_role == "admin":
             
             st.dataframe(filtered_df, use_container_width=True)
             
-            # Delete Inquiry Section
+            # Delete Inquiry
             st.markdown("---")
             st.subheader("🗑️ Delete Inquiry")
             st.warning("⚠️ This action cannot be undone!")
             
             inquiry_to_delete = st.selectbox(
                 "Select Inquiry to Delete", 
-                [f"{i.get('id')} - {i.get('name', 'Unknown')} ({i.get('inquiry_type', 'N/A')})" for i in inquiries],
-                key="delete_inquiry"
+                [f"{i.get('id')} - {i.get('name', 'Unknown')} ({i.get('inquiry_type', 'N/A')})" for i in inquiries]
             )
             
             col1, col2 = st.columns(2)
             with col1:
-                confirm_delete = st.checkbox("I confirm I want to delete this inquiry", key="confirm_inquiry_delete")
+                confirm_delete = st.checkbox("I confirm I want to delete this inquiry")
             with col2:
                 if st.button("🗑️ Delete Inquiry", type="secondary"):
                     if confirm_delete:
@@ -813,7 +910,6 @@ if st.session_state.user_role == "admin":
                     else:
                         st.error("❌ Please check the confirmation checkbox first")
             
-            st.markdown("---")
             st.markdown("---")
             st.subheader("🔄 Update Inquiry Status")
             inquiry_ids = [f"{i.get('id')} - {i.get('name', 'Unknown')}" for i in inquiries]
@@ -848,7 +944,7 @@ if st.session_state.user_role == "admin":
             st.info("No inquiries received yet.")
             st.info("Users can submit inquiries from the 'Contact Us' page.")
 
-    # ----- SETTINGS (Password Change) -----
+    # ----- SETTINGS (Password Change - Admin Only) -----
     elif page == "⚙️ Settings":
         st.title("⚙️ Settings")
         st.markdown("---")
@@ -873,75 +969,8 @@ if st.session_state.user_role == "admin":
                 st.success(f"✅ Password updated successfully for {st.session_state.username}!")
                 st.info("Please logout and login again with your new password.")
 
-# ============== USER PAGES ==============
-else:
-    
-    # ----- SETTINGS (User Password Change) -----
-    if page == "⚙️ Settings":
-        st.title("⚙️ Settings")
-        st.markdown("---")
-        
-        st.subheader("🔐 Change Your Password")
-        
-        current_password = st.text_input("Current Password", type="password")
-        new_password = st.text_input("New Password", type="password")
-        confirm_password = st.text_input("Confirm New Password", type="password")
-        
-        if st.button("💾 Update Password", type="primary"):
-            if not current_password or not new_password or not confirm_password:
-                st.error("❌ Please fill all fields")
-            elif not verify_credentials(st.session_state.username, current_password):
-                st.error("❌ Current password is incorrect")
-            elif new_password != confirm_password:
-                st.error("❌ New passwords do not match")
-            elif len(new_password) < 6:
-                st.error("❌ Password must be at least 6 characters")
-            else:
-                update_password(st.session_state.username, new_password)
-                st.success(f"✅ Password updated successfully!")
-                st.info("Please logout and login again with your new password.")
-    
-    # ----- CONTACT US / INQUIRY (User Page) -----
-    elif page == "📞 Contact Us":
-        st.title("📞 Contact Us / Send Inquiry")
-        st.markdown("---")
-        
-        st.info("Have a question or need assistance? Fill out the form below and our team will get back to you.")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            inquiry_name = st.text_input("Your Name")
-            inquiry_contact = st.text_input("Contact Number")
-            inquiry_email = st.text_input("Email Address")
-            
-        with col2:
-            inquiry_type = st.selectbox("Inquiry Type", ["General", "Property", "Buy", "Sell", "Other"])
-            preferred_contact = st.selectbox("Preferred Contact Method", ["Phone", "Email", "WhatsApp"])
-        
-        inquiry_message = st.text_area("Your Message / Inquiry", height=150)
-        
-        if st.button("📤 Send Inquiry", type="primary"):
-            if not inquiry_name or not inquiry_contact or not inquiry_message:
-                st.error("❌ Please fill in Name, Contact Number, and Message")
-            else:
-                new_inquiry = {
-                    "id": f"INQ{len(inquiries)+1:03d}",
-                    "name": inquiry_name,
-                    "contact": inquiry_contact,
-                    "email": inquiry_email,
-                    "inquiry_type": inquiry_type,
-                    "preferred_contact": preferred_contact,
-                    "message": inquiry_message,
-                    "status": "New",
-                    "admin_remarks": "",
-                    "date_added": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "updated_date": ""
-                }
-                inquiries.append(new_inquiry)
-                save_data(INQUIRIES_FILE, inquiries)
-                st.success("✅ Your inquiry has been submitted successfully! Our team will contact you soon.")
-                st.balloons()
+# ============== USER PAGES (Login Required - Submit Property/Requirement) ==============
+if st.session_state.logged_in and st.session_state.user_role == "user":
     
     # ----- SUBMIT PROPERTY -----
     if page == "📝 Submit Property":
@@ -1028,46 +1057,11 @@ else:
             buyers.append(new_buyer)
             save_data(BUYERS_FILE, buyers)
             st.success("✅ Requirement submitted successfully! We'll find matching properties for you.")
-    
-    # ----- SEARCH PROPERTIES (User View) -----
-    elif page == "🔍 Search Properties":
-        st.title("🔍 Search Available Properties")
-        st.markdown("---")
-        st.info("Search for available properties matching your requirements.")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            prop_type = st.selectbox("Property Type", ["All", "Flat", "Plot", "Villa", "Commercial"])
-        with col2:
-            min_price = st.number_input("Min Price (₹)", value=0)
-        with col3:
-            max_price = st.number_input("Max Price (₹)", value=50000000)
-        
-        location = st.text_input("Location (optional)")
-        
-        if st.button("🔍 Search", type="primary"):
-            if properties:
-                available_props = [p for p in properties if p.get('status') == 'Available']
-                results = available_props
-                
-                if prop_type != "All":
-                    results = [p for p in results if p.get('type') == prop_type]
-                
-                results = [p for p in results if min_price <= p.get('price', 0) <= max_price]
-                
-                if location:
-                    results = [p for p in results if location.lower() in p.get('location', '').lower()]
-                
-                if results:
-                    st.success(f"Found {len(results)} properties")
-                    display_props = [{k: v for k, v in p.items() if k not in ['owner_contact']} for p in results]
-                    st.dataframe(pd.DataFrame(display_props), use_container_width=True)
-                else:
-                    st.warning("No properties found matching criteria.")
-            else:
-                st.info("No properties available at the moment.")
 
 # Footer
 st.sidebar.markdown("---")
-st.sidebar.info("PinkCityEstate.in CRM v2.0")
+if st.session_state.logged_in:
+    st.sidebar.info("PinkCityEstate.in CRM v2.0")
+else:
+    st.sidebar.info("PinkCityEstate.in - Public Access")
 st.sidebar.caption("© 2026 All rights reserved.")
