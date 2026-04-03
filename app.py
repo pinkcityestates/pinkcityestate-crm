@@ -161,7 +161,7 @@ else:
 # ============== PUBLIC PAGES (No Login Required) ==============
 
 # ----- PUBLIC SEARCH PROPERTIES -----
-elif page == "🔍 Search Properties":
+if page == "🔍 Search Properties":
     # HERO SECTION
     st.markdown("""
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 10px; text-align: center; margin-bottom: 2rem;">
