@@ -335,7 +335,7 @@ if st.session_state.logged_in and st.session_state.user_role == "admin":
         # BULK IMPORT SECTION
         st.subheader("📥 Bulk Import Properties")
         
-        import_type = st.radio("Import Type", ["📊 Excel/CSV File", "💬 WhatsApp Messages"], horizontal=True)
+        import_type = st.radio("Import Type", ["📊 Excel/CSV File", "� Unified CRM Template", "�💬 WhatsApp Messages"], horizontal=True)
         
         if import_type == "📊 Excel/CSV File":
             with st.expander("Upload Excel/CSV with Flexible Column Mapping", expanded=True):
@@ -447,6 +447,242 @@ if st.session_state.logged_in and st.session_state.user_role == "admin":
                             
                     except Exception as e:
                         st.error(f"❌ Error reading file: {e}")
+        
+        elif import_type == "🔄 Unified CRM Template":
+            with st.expander("Upload Unified CRM Template (Property + Buyer + Seller + Referral)", expanded=True):
+                st.info("Upload the unified template where one row can create Property, Buyer, Seller, and Referral entries simultaneously.")
+                st.caption("Use flags (Yes/No) to control what gets created from each row")
+                
+                unified_file = st.file_uploader("Choose Unified CSV file", type=["csv"], key="unified_upload")
+                
+                if unified_file is not None:
+                    try:
+                        df_unified = pd.read_csv(unified_file)
+                        
+                        st.write(f"**📋 Preview of {len(df_unified)} entries:**")
+                        st.dataframe(df_unified.head(10), use_container_width=True)
+                        
+                        # Summary of what will be created
+                        st.write("**🎯 Summary of what will be imported:**")
+                        
+                        if 'is_buyer_requirement' in df_unified.columns:
+                            buyer_count = df_unified[df_unified['is_buyer_requirement'].astype(str).str.lower() == 'yes'].shape[0]
+                            st.write(f"- Buyers to create: {buyer_count}")
+                        
+                        if 'is_seller_listing' in df_unified.columns:
+                            seller_count = df_unified[df_unified['is_seller_listing'].astype(str).str.lower() == 'yes'].shape[0]
+                            st.write(f"- Sellers to create: {seller_count}")
+                        
+                        if 'is_referral' in df_unified.columns:
+                            referral_count = df_unified[df_unified['is_referral'].astype(str).str.lower() == 'yes'].shape[0]
+                            st.write(f"- Referrals to create: {referral_count}")
+                        
+                        # Preview first row details
+                        if st.button("👁️ Preview First Entry Details", type="secondary"):
+                            if len(df_unified) > 0:
+                                row = df_unified.iloc[0]
+                                st.write("**Entry Type:**", row.get('entry_type', 'N/A'))
+                                
+                                cols = st.columns(4)
+                                with cols[0]:
+                                    st.write("**Property Info:**")
+                                    st.write(f"- Type: {row.get('property_type', 'N/A')}")
+                                    st.write(f"- Location: {row.get('location', 'N/A')}")
+                                    st.write(f"- Price: ₹{row.get('price', 'N/A')}")
+                                
+                                with cols[1]:
+                                    if str(row.get('is_buyer_requirement', '')).lower() == 'yes':
+                                        st.write("**Buyer Info:**")
+                                        st.write(f"- Name: {row.get('buyer_name', 'N/A')}")
+                                        st.write(f"- Budget: ₹{row.get('buyer_budget_min', 'N/A')} - ₹{row.get('buyer_budget_max', 'N/A')}")
+                                
+                                with cols[2]:
+                                    if str(row.get('is_seller_listing', '')).lower() == 'yes':
+                                        st.write("**Seller Info:**")
+                                        st.write(f"- Name: {row.get('seller_name', 'N/A')}")
+                                        st.write(f"- Expected: ₹{row.get('seller_expected_price', 'N/A')}")
+                                
+                                with cols[3]:
+                                    if str(row.get('is_referral', '')).lower() == 'yes':
+                                        st.write("**Referral Info:**")
+                                        st.write(f"- Name: {row.get('referral_name', 'N/A')}")
+                                        st.write(f"- Reward: ₹{row.get('referral_reward_amount', 'N/A')}")
+                        
+                        # Import button
+                        if st.button("📥 Import All Unified Data", type="primary"):
+                            prop_count = 0
+                            buyer_count = 0
+                            seller_count = 0
+                            referral_count = 0
+                            
+                            for idx, row in df_unified.iterrows():
+                                try:
+                                    # Extract property data if present
+                                    has_property = any([
+                                        pd.notna(row.get('property_type')),
+                                        pd.notna(row.get('location')),
+                                        pd.notna(row.get('price'))
+                                    ])
+                                    
+                                    if has_property:
+                                        # Parse price (handle string formats)
+                                        price_val = row.get('price', 0)
+                                        if isinstance(price_val, str):
+                                            price_val = price_val.replace(',', '').replace('₹', '')
+                                            if 'cr' in price_val.lower():
+                                                price_val = float(price_val.lower().replace('cr', '').strip()) * 10000000
+                                            elif 'lac' in price_val.lower() or 'lakh' in price_val.lower():
+                                                price_val = float(price_val.lower().replace('lac', '').replace('lakh', '').strip()) * 100000
+                                            else:
+                                                try:
+                                                    price_val = float(price_val)
+                                                except:
+                                                    price_val = 0
+                                        
+                                        # Parse area
+                                        area_val = row.get('area_sqft', 0)
+                                        if isinstance(area_val, str):
+                                            area_str = area_val.lower()
+                                            if 'gaj' in area_str or 'sq yard' in area_str:
+                                                # Extract number and convert (1 Gaj = 9 sqft)
+                                                import re
+                                                num_match = re.search(r'[\d.]+', area_str)
+                                                if num_match:
+                                                    area_val = float(num_match.group()) * 9
+                                            else:
+                                                try:
+                                                    area_val = float(area_val.replace(',', ''))
+                                                except:
+                                                    area_val = 1000
+                                        
+                                        new_property = {
+                                            "id": f"PROP{len(properties)+prop_count+1:03d}",
+                                            "type": str(row.get('property_type', 'Flat')),
+                                            "location": str(row.get('location', '')),
+                                            "area_sqft": int(area_val) if area_val else 1000,
+                                            "price": int(price_val) if price_val else 0,
+                                            "bedrooms": str(row.get('bedrooms', '2 BHK')),
+                                            "furnished": str(row.get('furnished', 'No')),
+                                            "status": str(row.get('property_status', 'Available')),
+                                            "owner_name": str(row.get('property_owner_name', row.get('buyer_name', ''))),
+                                            "owner_contact": str(row.get('property_owner_contact', row.get('buyer_contact', ''))),
+                                            "referral_name": str(row.get('referral_name', '')),
+                                            "referral_reward": int(row.get('referral_reward_amount', 0)) if pd.notna(row.get('referral_reward_amount')) else 0,
+                                            "remarks": str(row.get('property_remarks', '')),
+                                            "date_added": datetime.now().strftime("%Y-%m-%d"),
+                                            "import_source": "unified_template"
+                                        }
+                                        properties.append(new_property)
+                                        prop_count += 1
+                                    
+                                    # Create Buyer if flagged
+                                    if str(row.get('is_buyer_requirement', '')).lower() == 'yes':
+                                        budget_min = row.get('buyer_budget_min', 0)
+                                        budget_max = row.get('buyer_budget_max', 0)
+                                        if isinstance(budget_min, str):
+                                            budget_min = budget_min.replace(',', '').replace('₹', '')
+                                            try:
+                                                budget_min = float(budget_min)
+                                            except:
+                                                budget_min = 0
+                                        if isinstance(budget_max, str):
+                                            budget_max = budget_max.replace(',', '').replace('₹', '')
+                                            try:
+                                                budget_max = float(budget_max)
+                                            except:
+                                                budget_max = 0
+                                        
+                                        new_buyer = {
+                                            "id": f"BUY{len(buyers)+buyer_count+1:03d}",
+                                            "name": str(row.get('buyer_name', '')),
+                                            "contact": str(row.get('buyer_contact', '')),
+                                            "email": str(row.get('buyer_email', '')),
+                                            "budget_min": int(budget_min) if budget_min else 0,
+                                            "budget_max": int(budget_max) if budget_max else 0,
+                                            "type_needed": str(row.get('buyer_property_type', 'Any')),
+                                            "preferred_location": str(row.get('buyer_location_preference', '')),
+                                            "requirements": f"{row.get('buyer_bedrooms', '')}, {row.get('buyer_furnished', '')}",
+                                            "status": "Active",
+                                            "follow_up_date": (datetime.now().replace(day=datetime.now().day + 7)).strftime("%Y-%m-%d"),
+                                            "remarks": str(row.get('buyer_remarks', '')),
+                                            "date_added": datetime.now().strftime("%Y-%m-%d"),
+                                            "urgency": str(row.get('buyer_urgency', 'Medium'))
+                                        }
+                                        buyers.append(new_buyer)
+                                        buyer_count += 1
+                                    
+                                    # Create Seller if flagged
+                                    if str(row.get('is_seller_listing', '')).lower() == 'yes':
+                                        exp_price = row.get('seller_expected_price', 0)
+                                        if isinstance(exp_price, str):
+                                            exp_price = exp_price.replace(',', '').replace('₹', '')
+                                            try:
+                                                exp_price = float(exp_price)
+                                            except:
+                                                exp_price = 0
+                                        
+                                        new_seller = {
+                                            "id": f"SEL{len(sellers)+seller_count+1:03d}",
+                                            "name": str(row.get('seller_name', '')),
+                                            "contact": str(row.get('seller_contact', '')),
+                                            "email": str(row.get('seller_email', '')),
+                                            "property_type": str(row.get('seller_property_type', '')),
+                                            "location": str(row.get('seller_location', '')),
+                                            "expected_price": int(exp_price) if exp_price else 0,
+                                            "urgency": "Medium",
+                                            "status": str(row.get('seller_status', 'Active')),
+                                            "remarks": str(row.get('seller_remarks', '')),
+                                            "date_added": datetime.now().strftime("%Y-%m-%d")
+                                        }
+                                        sellers.append(new_seller)
+                                        seller_count += 1
+                                    
+                                    # Create Referral if flagged
+                                    if str(row.get('is_referral', '')).lower() == 'yes':
+                                        reward = row.get('referral_reward_amount', 0)
+                                        if isinstance(reward, str):
+                                            reward = reward.replace(',', '').replace('₹', '')
+                                            try:
+                                                reward = float(reward)
+                                            except:
+                                                reward = 0
+                                        
+                                        new_referral = {
+                                            "id": f"REF{len(referrals)+referral_count+1:03d}",
+                                            "name": str(row.get('referral_name', '')),
+                                            "contact": str(row.get('referral_contact', '')),
+                                            "properties_referred": 1,
+                                            "total_reward": int(reward) if reward else 0,
+                                            "status": str(row.get('referral_status', 'Active')),
+                                            "remarks": str(row.get('referral_remarks', '')),
+                                            "date_added": datetime.now().strftime("%Y-%m-%d"),
+                                            "type": str(row.get('referral_type', 'Agent'))
+                                        }
+                                        referrals.append(new_referral)
+                                        referral_count += 1
+                                    
+                                except Exception as e:
+                                    st.error(f"Error on row {idx+1}: {e}")
+                            
+                            # Save all data
+                            if prop_count > 0:
+                                save_data(PROPERTIES_FILE, properties)
+                            if buyer_count > 0:
+                                save_data(BUYERS_FILE, buyers)
+                            if seller_count > 0:
+                                save_data(SELLERS_FILE, sellers)
+                            if referral_count > 0:
+                                save_data(REFERRALS_FILE, referrals)
+                            
+                            st.success(f"✅ Import Complete!")
+                            st.write(f"- {prop_count} Properties imported")
+                            st.write(f"- {buyer_count} Buyers imported")
+                            st.write(f"- {seller_count} Sellers imported")
+                            st.write(f"- {referral_count} Referrals imported")
+                            st.rerun()
+                            
+                    except Exception as e:
+                        st.error(f"❌ Error reading unified template: {e}")
         
         else:  # WhatsApp Messages Import
             with st.expander("💬 Import from WhatsApp Messages", expanded=True):
