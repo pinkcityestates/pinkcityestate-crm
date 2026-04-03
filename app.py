@@ -161,38 +161,119 @@ else:
 # ============== PUBLIC PAGES (No Login Required) ==============
 
 # ----- PUBLIC SEARCH PROPERTIES -----
-if page == "🔍 Search Properties":
-    st.title("🔍 Search Available Properties")
+elif page == "🔍 Search Properties":
+    # HERO SECTION
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 10px; text-align: center; margin-bottom: 2rem;">
+        <h1 style="color: white; font-size: 2.5rem; margin-bottom: 1rem;">Find Best Property Deals in Jaipur</h1>
+        <p style="color: #e0e0e0; font-size: 1.2rem;">Flats • Plots • Villas • Commercial</p>
+        <p style="color: #c0c0c0; font-size: 1rem;">Vaishali Nagar • Mansarovar • Jagatpura</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("---")
-    st.info("Search for available properties matching your requirements.")
     
-    col1, col2, col3 = st.columns(3)
+    # QUICK FILTER CHIPS
+    st.subheader("Quick Filters")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
     with col1:
-        prop_type = st.selectbox("Property Type", ["All", "Flat", "Plot", "Villa", "Commercial"])
+        if st.button("🏠 All Properties", use_container_width=True):
+            st.session_state.quick_filter = "All"
     with col2:
-        min_price = st.number_input("Min Price (₹)", value=0)
+        if st.button("🏢 Flats", use_container_width=True):
+            st.session_state.quick_filter = "Flat"
     with col3:
-        max_price = st.number_input("Max Price (₹)", value=50000000)
+        if st.button("📐 Plots", use_container_width=True):
+            st.session_state.quick_filter = "Plot"
+    with col4:
+        if st.button("🏡 Villas", use_container_width=True):
+            st.session_state.quick_filter = "Villa"
+    with col5:
+        if st.button("🏪 Commercial", use_container_width=True):
+            st.session_state.quick_filter = "Commercial"
     
-    location = st.text_input("Location (optional)")
+    # DETAILED SEARCH
+    with st.expander("🔍 Advanced Search", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            prop_type = st.selectbox("Property Type", ["All", "Flat", "Plot", "Villa", "Commercial"], 
+                                   index=["All", "Flat", "Plot", "Villa", "Commercial"].index(st.session_state.get('quick_filter', 'All')))
+        with col2:
+            min_price = st.number_input("Min Price (₹)", value=0)
+        with col3:
+            max_price = st.number_input("Max Price (₹)", value=50000000)
+        
+        location = st.text_input("Location (optional)", placeholder="e.g., Malviya Nagar, Jagatpura")
     
-    if st.button("🔍 Search", type="primary"):
+    # SEARCH BUTTON
+    search_clicked = st.button("🔍 Search Properties", type="primary", use_container_width=True)
+    
+    # SHOW PROPERTIES
+    if search_clicked or 'quick_filter' in st.session_state:
         if properties:
             available_props = [p for p in properties if p.get('status') == 'Available']
             results = available_props
             
-            if prop_type != "All":
+            # Apply filters
+            quick_filter = st.session_state.get('quick_filter', 'All')
+            if quick_filter != "All":
+                results = [p for p in results if p.get('type') == quick_filter]
+            elif prop_type != "All":
                 results = [p for p in results if p.get('type') == prop_type]
             
-            results = [p for p in results if min_price <= p.get('price', 0) <= max_price]
-            
-            if location:
+            if location and 'quick_filter' not in st.session_state:
                 results = [p for p in results if location.lower() in p.get('location', '').lower()]
+            
+            # Price filter
+            if search_clicked:
+                results = [p for p in results if min_price <= p.get('price', 0) <= max_price]
             
             if results:
                 st.success(f"Found {len(results)} properties")
-                display_props = [{k: v for k, v in p.items() if k not in ['owner_contact']} for p in results]
-                st.dataframe(pd.DataFrame(display_props), use_container_width=True)
+                
+                # PROPERTY CARDS GRID
+                st.markdown("### 🏘️ Featured Properties")
+                
+                # Create rows of 3 cards each
+                for i in range(0, len(results), 3):
+                    cols = st.columns(3)
+                    for j, col in enumerate(cols):
+                        if i + j < len(results):
+                            prop = results[i + j]
+                            with col:
+                                # Card styling
+                                card_html = f"""
+                                <div style="border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 120px; display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem;">
+                                        🏠
+                                    </div>
+                                    <div style="padding: 1rem;">
+                                        <div style="display: inline-block; background: #667eea; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; margin-bottom: 0.5rem;">
+                                            {prop.get('status', 'Available')}
+                                        </div>
+                                        <h4 style="margin: 0; font-size: 1.1rem; color: #333;">{prop.get('type', 'Property')}</h4>
+                                        <p style="margin: 0.25rem 0; color: #666; font-size: 0.9rem;">📍 {prop.get('location', 'Location N/A')}</p>
+                                        <p style="margin: 0.25rem 0; color: #666; font-size: 0.85rem;">
+                                            🛏️ {prop.get('bedrooms', 'N/A')} | 📐 {prop.get('area_sqft', 'N/A')} sqft
+                                        </p>
+                                        <p style="margin: 0.5rem 0; font-size: 1.2rem; font-weight: bold; color: #667eea;">
+                                            ₹{prop.get('price', 0):,}
+                                        </p>
+                                    </div>
+                                </div>
+                                """
+                                st.markdown(card_html, unsafe_allow_html=True)
+                                
+                                # Inquiry button
+                                if st.button("📞 Inquire Now", key=f"inquire_{prop.get('id')}", use_container_width=True):
+                                    st.session_state.inquiry_property = prop
+                                    st.info(f"Contact: {prop.get('owner_contact', 'N/A')}")
+                
+                # Clear quick filter after showing results
+                if 'quick_filter' in st.session_state:
+                    del st.session_state.quick_filter
+                    
             else:
                 st.warning("No properties found matching your criteria.")
                 st.info("📞 Please send us your inquiry through the Contact Us page. Our team will get back to you within 24 hours.")
@@ -207,39 +288,143 @@ elif page == "📞 Contact Us":
     
     st.info("Have a question or need assistance? Fill out the form below and our team will get back to you within 24 hours.")
     
+    # Entry Type Selection (matching CRM template format)
+    entry_type = st.selectbox(
+        "I want to:",
+        ["🏠 List a Property (Sell/Rent)", "🔍 Buy/Rent a Property", "🤝 Refer a Property/Client", "💼 Become a Partner/Agent", "❓ General Inquiry"],
+        key="contact_entry_type"
+    )
+    
+    st.markdown("---")
+    
+    # Common Fields (All types)
     col1, col2 = st.columns(2)
-    
     with col1:
-        inquiry_name = st.text_input("Your Name")
-        inquiry_contact = st.text_input("Contact Number")
-        inquiry_email = st.text_input("Email Address")
-        
+        name = st.text_input("Your Name *", key="contact_name")
+        phone = st.text_input("Phone Number *", key="contact_phone")
+        email = st.text_input("Email Address", key="contact_email")
+    
     with col2:
-        inquiry_type = st.selectbox("Inquiry Type", ["General", "Property", "Buy", "Sell", "Other"])
-        preferred_contact = st.selectbox("Preferred Contact Method", ["Phone", "Email", "WhatsApp"])
+        location = st.text_input("Location/Area", key="contact_location", placeholder="e.g., Malviya Nagar, Jaipur")
+        preferred_contact = st.selectbox("Preferred Contact Method", ["Phone", "WhatsApp", "Email"], key="contact_pref")
     
-    inquiry_message = st.text_area("Your Message / Inquiry", height=150)
+    st.markdown("---")
     
-    if st.button("📤 Send Inquiry", type="primary"):
-        if not inquiry_name or not inquiry_contact or not inquiry_message:
-            st.error("❌ Please fill in Name, Contact Number, and Message")
+    # Dynamic fields based on Entry Type
+    if entry_type == "🏠 List a Property (Sell/Rent)":
+        st.subheader("Property Details")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            prop_type = st.selectbox("Property Type", ["Flat", "Plot", "Villa", "Commercial", "Office"])
+            bedrooms = st.selectbox("Bedrooms", ["Studio", "1 BHK", "2 BHK", "3 BHK", "4 BHK", "5+ BHK", "N/A"])
+        with col2:
+            area_val = st.text_input("Area (sqft/Gaj)", placeholder="e.g., 1200 sqft or 200 Gaj")
+            furnished = st.selectbox("Furnished", ["No", "Yes", "Semi"])
+        with col3:
+            expected_price = st.text_input("Expected Price", placeholder="e.g., 45L or 1.35Cr")
+            purpose = st.selectbox("Purpose", ["Sale", "Rent"])
+        
+        remarks = st.text_area("Property Description", height=100, placeholder="Describe your property (floor, facing, amenities, etc.)")
+        
+    elif entry_type == "🔍 Buy/Rent a Property":
+        st.subheader("Requirement Details")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            req_type = st.selectbox("Looking For", ["Flat", "Plot", "Villa", "Commercial", "Office"])
+            req_bedrooms = st.selectbox("Bedrooms Needed", ["Studio", "1 BHK", "2 BHK", "3 BHK", "4 BHK", "5+ BHK", "Any"])
+        with col2:
+            budget_min = st.text_input("Budget From", placeholder="e.g., 30L")
+            budget_max = st.text_input("Budget To", placeholder="e.g., 80L")
+        with col3:
+            req_furnished = st.selectbox("Furnishing", ["Any", "Furnished", "Semi-Furnished", "Unfurnished"])
+            urgency = st.selectbox("Urgency", ["Immediate", "Within 1 month", "Within 3 months", "Just exploring"])
+        
+        remarks = st.text_area("Additional Requirements", height=100, placeholder="Specific needs, preferred localities, etc.")
+        
+    elif entry_type == "🤝 Refer a Property/Client":
+        st.subheader("Referral Details")
+        col1, col2 = st.columns(2)
+        with col1:
+            referral_for = st.selectbox("Referral For", ["Property for Sale", "Property for Rent", "Buyer", "Seller"])
+            ref_property_type = st.selectbox("Property Type", ["Flat", "Plot", "Villa", "Commercial", "N/A"])
+        with col2:
+            ref_location = st.text_input("Property/Client Location")
+            ref_price = st.text_input("Price/Budget", placeholder="e.g., 45L")
+        
+        remarks = st.text_area("Referral Details", height=100, placeholder="Client details, property description, your commission expectation, etc.")
+        
+    elif entry_type == "💼 Become a Partner/Agent":
+        st.subheader("Partner Details")
+        col1, col2 = st.columns(2)
+        with col1:
+            partner_type = st.selectbox("Partner Type", ["Individual Agent", "Broker", "Builder", "Property Dealer", "Other"])
+            experience = st.selectbox("Experience", ["0-1 years", "1-3 years", "3-5 years", "5+ years"])
+        with col2:
+            areas_operate = st.text_input("Areas You Operate", placeholder="e.g., Malviya Nagar, Vaishali Nagar")
+        
+        remarks = st.text_area("About You", height=100, placeholder="Tell us about your business, past deals, etc.")
+        
+    else:  # General Inquiry
+        remarks = st.text_area("Your Message", height=150, placeholder="How can we help you?")
+    
+    st.markdown("---")
+    
+    # Submit Button
+    if st.button("📤 Submit Inquiry", type="primary", use_container_width=True):
+        if not name or not phone:
+            st.error("❌ Please fill in Name and Phone Number")
         else:
-            new_inquiry = {
+            # Create inquiry record
+            inquiry_data = {
                 "id": f"INQ{len(inquiries)+1:03d}",
-                "name": inquiry_name,
-                "contact": inquiry_contact,
-                "email": inquiry_email,
-                "inquiry_type": inquiry_type,
+                "name": name,
+                "contact": phone,
+                "email": email,
+                "location": location,
+                "entry_type": entry_type,
                 "preferred_contact": preferred_contact,
-                "message": inquiry_message,
                 "status": "New",
                 "admin_remarks": "",
                 "date_added": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "updated_date": ""
+                "updated_date": "",
+                "details": remarks if 'remarks' in locals() else ""
             }
-            inquiries.append(new_inquiry)
+            
+            # Add type-specific data
+            if entry_type == "🏠 List a Property (Sell/Rent)":
+                inquiry_data.update({
+                    "inquiry_subtype": "Seller Listing",
+                    "property_type": prop_type if 'prop_type' in locals() else "",
+                    "area": area_val if 'area_val' in locals() else "",
+                    "price": expected_price if 'expected_price' in locals() else "",
+                    "purpose": purpose if 'purpose' in locals() else ""
+                })
+            elif entry_type == "🔍 Buy/Rent a Property":
+                inquiry_data.update({
+                    "inquiry_subtype": "Buyer Requirement",
+                    "property_type": req_type if 'req_type' in locals() else "",
+                    "budget_min": budget_min if 'budget_min' in locals() else "",
+                    "budget_max": budget_max if 'budget_max' in locals() else "",
+                    "urgency": urgency if 'urgency' in locals() else ""
+                })
+            elif entry_type == "🤝 Refer a Property/Client":
+                inquiry_data.update({
+                    "inquiry_subtype": "Referral",
+                    "referral_for": referral_for if 'referral_for' in locals() else "",
+                    "property_type": ref_property_type if 'ref_property_type' in locals() else ""
+                })
+            elif entry_type == "💼 Become a Partner/Agent":
+                inquiry_data.update({
+                    "inquiry_subtype": "Partner/Agent",
+                    "partner_type": partner_type if 'partner_type' in locals() else "",
+                    "experience": experience if 'experience' in locals() else ""
+                })
+            
+            inquiries.append(inquiry_data)
             save_data(INQUIRIES_FILE, inquiries)
-            st.success("✅ Your inquiry has been submitted successfully! Our team will contact you within 24 hours.")
+            
+            st.success("✅ Your inquiry has been submitted successfully!")
+            st.info("📞 Our team will contact you within 24 hours.")
             st.balloons()
 
 # ----- ADMIN LOGIN -----
