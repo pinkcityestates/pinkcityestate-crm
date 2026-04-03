@@ -48,19 +48,38 @@ if 'username' not in st.session_state:
 if 'public_page' not in st.session_state:
     st.session_state.public_page = "🔍 Search Properties"
 
-# Load or initialize credentials
+# Load or initialize credentials - works for both local and cloud
 def load_credentials():
+    # First check if credentials exist in session state (for cloud persistence during session)
+    if 'credentials' in st.session_state:
+        return st.session_state.credentials
+    
+    # Then check local file (for local development)
     if os.path.exists(CREDENTIALS_FILE):
-        with open(CREDENTIALS_FILE, 'r') as f:
-            return json.load(f)
-    return {
+        try:
+            with open(CREDENTIALS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    
+    # Default credentials
+    default_creds = {
         "admin": hash_password("admin123"),
         "user": hash_password("user123")
     }
+    # Store in session state for cloud
+    st.session_state.credentials = default_creds
+    return default_creds
 
 def save_credentials(creds):
-    with open(CREDENTIALS_FILE, 'w') as f:
-        json.dump(creds, f, indent=2)
+    # Always update session state (works on cloud)
+    st.session_state.credentials = creds
+    # Also try to save to file (works on local)
+    try:
+        with open(CREDENTIALS_FILE, 'w') as f:
+            json.dump(creds, f, indent=2)
+    except:
+        pass  # File write may fail on cloud, but session state will persist
 
 def verify_credentials(username, password):
     creds = load_credentials()
